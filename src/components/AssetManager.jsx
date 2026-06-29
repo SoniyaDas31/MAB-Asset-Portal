@@ -7,7 +7,10 @@ export default function AssetManager() {
   const [media, setMedia] = useState([]);
   const [loadingAlbums, setLoadingAlbums] = useState(true);
   const [loadingMedia, setLoadingMedia] = useState(false);
-  const [uploads, setUploads] = useState([]); // Array of { name, progress, status }
+  const [uploads, setUploads] = useState([]); // Array of { id, file, name, progress, status }
+
+  // Generate a unique ID for each upload
+  const generateUploadId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
   const [dragActive, setDragActive] = useState(false);
   
   // New Album form states
@@ -200,11 +203,55 @@ export default function AssetManager() {
     fileInputRef.current.click();
   };
 
+  // Helper function to upload a single file
+  const uploadSingleFile = async (uploadId, file) => {
+    if (!activeAlbum || !supabase) return;
+    const type = file.type.startsWith('video/') ? 'video' : 'image';
+
+    // Update status to uploading
+    setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, status: 'uploading', progress: 0 } : u));
+
+    try {
+      // Convert file to base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Insert record in 'media' table
+      const { data: mediaData, error: dbError } = await supabase
+        .from('media')
+        .insert({
+          album_id: activeAlbum.id,
+          type: type,
+          url: base64,
+          name: file.name,
+          size: file.size
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // Success state
+      setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, status: 'success', progress: 100 } : u));
+      setMedia(prev => [mediaData, ...prev]);
+
+    } catch (err) {
+      console.error(`Error uploading ${file.name}:`, err);
+      setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, status: 'error' } : u));
+    }
+  };
+
   const handleFilesUpload = async (filesList) => {
     if (!activeAlbum || !supabase) return;
     
     const files = Array.from(filesList);
     const newUploads = files.map(file => ({
+      id: generateUploadId(),
+      file: file,
       name: file.name,
       progress: 0,
       status: 'pending'
@@ -212,51 +259,27 @@ export default function AssetManager() {
 
     setUploads(prev => [...prev, ...newUploads]);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const type = file.type.startsWith('video/') ? 'video' : 'image';
-
-      // Update upload status to uploading
-      setUploads(prev => prev.map(u => u.name === file.name ? { ...u, status: 'uploading' } : u));
-
-      try {
-        // Convert file to base64
-        const base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-
-        // 3. Insert record in 'media' table (store base64 in URL field)
-        const { data: mediaData, error: dbError } = await supabase
-          .from('media')
-          .insert({
-            album_id: activeAlbum.id,
-            type: type,
-            url: base64,
-            name: file.name,
-            size: file.size
-          })
-          .select()
-          .single();
-
-        if (dbError) throw dbError;
-
-        // Success state
-        setUploads(prev => prev.map(u => u.name === file.name ? { ...u, status: 'success', progress: 100 } : u));
-        setMedia(prev => [mediaData, ...prev]);
-
-      } catch (err) {
-        console.error(`Error uploading ${file.name}:`, err);
-        setUploads(prev => prev.map(u => u.name === file.name ? { ...u, status: 'error' } : u));
-      }
+    for (const upload of newUploads) {
+      await uploadSingleFile(upload.id, upload.file);
     }
 
     // Clear completed uploads list after 3 seconds
     setTimeout(() => {
       setUploads(prev => prev.filter(u => u.status !== 'success'));
     }, 3000);
+  };
+
+  const handleRetryUpload = async (uploadId) => {
+    const upload = uploads.find(u => u.id === uploadId);
+    if (!upload || !upload.file) return;
+    await uploadSingleFile(uploadId, upload.file);
+  };
+
+  const handleRetryAll = async () => {
+    const failedUploads = uploads.filter(u => u.status === 'error');
+    for (const upload of failedUploads) {
+      await uploadSingleFile(upload.id, upload.file);
+    }
   };
 
   const handleDeleteMedia = async (item) => {
@@ -479,18 +502,48 @@ export default function AssetManager() {
             {/* Upload progress list */}
             {uploads.length > 0 && (
               <div className="upload-progress-list">
-                {uploads.map((upload, idx) => (
-                  <div key={idx} className="upload-progress-item">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: '500' }}>Uploads</span>
+                  {uploads.some(u => u.status === 'error') && (
+                    <button 
+                      onClick={handleRetryAll}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.3rem 0.8rem', fontSize: '0.85rem' }}
+                    >
+                      Retry All Failed
+                    </button>
+                  )}
+                </div>
+                {uploads.map((upload) => (
+                  <div key={upload.id} className="upload-progress-item">
                     <div className="upload-progress-header">
                       <span>{upload.name}</span>
-                      <span>{upload.status === 'error' ? 'Failed' : `${upload.progress}%`}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ 
+                          color: upload.status === 'error' ? 'var(--danger)' : 'var(--text-muted)'
+                        }}>
+                          {upload.status === 'error' ? 'Failed' : 
+                           upload.status === 'uploading' ? `${upload.progress}%` : 
+                           upload.status === 'success' ? 'Done' : 'Pending'}
+                        </span>
+                        {upload.status === 'error' && (
+                          <button 
+                            onClick={() => handleRetryUpload(upload.id)}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.1rem 0.5rem', fontSize: '0.75rem' }}
+                          >
+                            Retry
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="upload-progress-bar">
                       <div
                         className="upload-progress-fill"
                         style={{
                           width: `${upload.progress}%`,
-                          backgroundColor: upload.status === 'error' ? 'var(--danger)' : 'var(--primary)'
+                          backgroundColor: upload.status === 'error' ? 'var(--danger)' : 
+                                           upload.status === 'success' ? 'var(--success)' : 'var(--primary)'
                         }}
                       />
                     </div>
