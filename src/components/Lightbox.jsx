@@ -130,31 +130,52 @@ export default function Lightbox({ mediaList, initialIndex, onClose }) {
       <div className="lightbox-footer-thumbnails">
         <div className="thumbnail-strip">
           {mediaList.map((media, idx) => (
-            <div
+            <ThumbnailItem
               key={media.id || idx}
-              ref={idx === currentIndex ? activeThumbRef : null}
-              className={`thumbnail-item ${idx === currentIndex ? 'active' : ''}`}
+              media={media}
+              index={idx}
+              currentIndex={currentIndex}
+              activeThumbRef={idx === currentIndex ? activeThumbRef : null}
               onClick={() => {
                 setCurrentIndex(idx);
                 setIsPlayingSlideshow(false); // Pause slideshow on click
               }}
-            >
-              {media.type === 'video' ? (
-                <>
-                  <video src={media.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <div className="thumbnail-video-badge">
-                    <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                  </div>
-                </>
-              ) : (
-                <img src={media.url} alt={media.name} />
-              )}
-            </div>
+            />
           ))}
         </div>
       </div>
     </div>
   );
 }
+
+// Memoized thumbnail item to prevent unnecessary re-renders
+const ThumbnailItem = React.memo(({ media, index, currentIndex, activeThumbRef, onClick }) => {
+  return (
+    <div
+      ref={activeThumbRef}
+      className={`thumbnail-item ${index === currentIndex ? 'active' : ''}`}
+      onClick={onClick}
+    >
+      {media.type === 'video' ? (
+        <>
+          <video 
+            src={media.url} 
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+            preload="none"
+          />
+          <div className="thumbnail-video-badge">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </div>
+        </>
+      ) : (
+        <img 
+          src={media.url} 
+          alt={media.name} 
+          loading="lazy"
+        />
+      )}
+    </div>
+  );
+});

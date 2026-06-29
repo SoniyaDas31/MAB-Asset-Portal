@@ -131,41 +131,11 @@ export default function AlbumDetail({ albumSlug, onBack }) {
       ) : (
         <div className="media-grid">
           {filteredMedia.map((item, index) => (
-            <div 
-              key={item.id} 
-              className="media-card"
+            <MediaCard
+              key={item.id}
+              item={item}
               onClick={() => setLightboxIndex(index)}
-            >
-              {item.type === 'video' ? (
-                <>
-                  <video src={item.url} preload="metadata" muted />
-                  <div className="media-card-type-icon">
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                  </div>
-                </>
-              ) : (
-                <img src={item.url} alt={item.name} loading="lazy" />
-              )}
-              
-              <div className="media-card-overlay">
-                <div className="media-icon-wrapper">
-                  {item.type === 'video' ? (
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                      <line x1="11" y1="8" x2="11" y2="14"></line>
-                      <line x1="8" y1="11" x2="14" y2="11"></line>
-                    </svg>
-                  )}
-                </div>
-              </div>
-            </div>
+            />
           ))}
         </div>
       )}
@@ -181,3 +151,51 @@ export default function AlbumDetail({ albumSlug, onBack }) {
     </div>
   );
 }
+
+// Memoized Media Card component to prevent unnecessary re-renders
+const MediaCard = React.memo(({ item, onClick }) => {
+  return (
+    <div 
+      className="media-card"
+      onClick={onClick}
+    >
+      {item.type === 'video' ? (
+        <>
+          <video 
+            src={item.url} 
+            preload="none" 
+            muted 
+          />
+          <div className="media-card-type-icon">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </div>
+        </>
+      ) : (
+        <img 
+          src={item.url} 
+          alt={item.name} 
+          loading="lazy"
+        />
+      )}
+      
+      <div className="media-card-overlay">
+        <div className="media-icon-wrapper">
+          {item.type === 'video' ? (
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <line x1="11" y1="8" x2="11" y2="14"></line>
+              <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
