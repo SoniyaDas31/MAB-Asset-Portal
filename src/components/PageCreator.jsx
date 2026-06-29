@@ -168,22 +168,37 @@ export default function PageCreator() {
     }
 
     setCoverUploading(true);
+    setCoverUploadProgress(0);
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `cover_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+    const filePath = `page-covers/${fileName}`;
 
     try {
-      // Convert file to base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          onUploadProgress: (progress) => {
+            const pct = Math.round((progress.loaded / progress.total) * 100);
+            setCoverUploadProgress(pct);
+          }
+        });
 
-      setCoverUrl(base64);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+      setCoverUrl(publicUrl);
     } catch (err) {
       console.error('Cover upload failed:', err);
       alert(`Cover upload failed: ${err.message}`);
     } finally {
       setCoverUploading(false);
+      setCoverUploadProgress(0);
       // reset file input so same file can be re-selected
       if (coverInputRef.current) coverInputRef.current.value = '';
     }

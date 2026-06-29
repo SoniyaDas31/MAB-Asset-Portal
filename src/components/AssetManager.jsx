@@ -31,18 +31,22 @@ export default function AssetManager() {
     }
 
     try {
-      // Convert file to base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const fileExt = file.name.split('.').pop();
+      const fileName = `album-cover-${activeAlbum.id}-${Date.now()}.${fileExt}`;
+      const filePath = `album-covers/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(filePath);
 
       // Update album in DB
       const { data, error: updateError } = await supabase
         .from('albums')
-        .update({ cover_url: base64 })
+        .update({ cover_url: publicUrl })
         .eq('id', activeAlbum.id)
         .select();
 
@@ -207,26 +211,38 @@ export default function AssetManager() {
   const uploadSingleFile = async (uploadId, file) => {
     if (!activeAlbum || !supabase) return;
     const type = file.type.startsWith('video/') ? 'video' : 'image';
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 7)}.${fileExt}`;
+    const filePath = `albums/${activeAlbum.id}/${fileName}`;
 
     // Update status to uploading
     setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, status: 'uploading', progress: 0 } : u));
 
     try {
-      // Convert file to base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // 1. Upload file to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          onUploadProgress: (progressEvent) => {
+            const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+            setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, progress } : u));
+          }
+        });
 
-      // Insert record in 'media' table
+      if (uploadError) throw uploadError;
+
+      // 2. Get public URL
+      const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(filePath);
+
+      // 3. Insert record in 'media' table
       const { data: mediaData, error: dbError } = await supabase
         .from('media')
         .insert({
           album_id: activeAlbum.id,
           type: type,
-          url: base64,
+          url: publicUrl,
           name: file.name,
           size: file.size
         })
